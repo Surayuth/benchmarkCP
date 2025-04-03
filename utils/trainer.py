@@ -1,9 +1,9 @@
 import os
 import torch
 import mlflow
-import importlib
 import numpy as np
 from pathlib import Path
+from cp import get_cp_instance
 
 class Trainer:
     def __init__(self, 
@@ -12,7 +12,8 @@ class Trainer:
                 calib_loader,
                 device, 
                 net, optimizer, criterion, scheduler, exp_name, class_dict,
-                cp_method
+                cp_method,
+                artifact_path
                 ):
         
         self.train_loader = train_loader
@@ -29,12 +30,14 @@ class Trainer:
         self.class_dict = class_dict
         self.n_classes = len(self.class_dict)
         self.cp_method = cp_method
+        self.artifact_path = artifact_path
 
     def _train_one_epoch(self, epoch, print_freq=100):
         self.net.train()
 
         running_loss = 0
         ovr_loss = 0
+
         for batch_idx, (inputs, targets) in enumerate(self.train_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
@@ -75,45 +78,38 @@ class Trainer:
         return val_loss
     
     def train(self, max_epochs):
-        exp_id = self.create_experiment(self.exp_name)
         min_val_loss = np.inf
 
-        #   create MLflow session here
-        with mlflow.start_run(experiment_id=exp_id) as run:
-            self.run_id = run.info.run_id
-            self.artifact_path = Path(run.info.artifact_uri.replace("file://", ""))
+        best_epoch = 1
+        for epoch in range(1, max_epochs+1):
+            train_loss = self._train_one_epoch(epoch)
+            val_loss = self._val_one_epoch(epoch)
 
-            best_epoch = 1
-            for epoch in range(1, max_epochs+1):
-                train_loss = self._train_one_epoch(epoch)
-                val_loss = self._val_one_epoch(epoch)
+            mlflow.log_metrics({
+                "train_loss": train_loss,
+                "val_loss": val_loss
+            }, step=epoch)
 
-                mlflow.log_metrics({
-                    "train_loss": train_loss,
-                    "val_loss": val_loss
-                }, step=epoch)
+            if val_loss < min_val_loss:
+                min_val_loss = val_loss
 
-                if val_loss < min_val_loss:
-                    min_val_loss = val_loss
+                # remove previous best model
+                prev_model_path = self.artifact_path / f"best_epoch_{best_epoch}.pth"
+                if prev_model_path.is_file():
+                    os.remove(prev_model_path)
 
-                    # remove previous best model
-                    prev_model_path = self.artifact_path / f"best_epoch_{best_epoch}.pth"
-                    if prev_model_path.is_file():
-                        os.remove(prev_model_path)
+                # save new best model
+                best_epoch = epoch
+                cur_model_path = self.artifact_path / f"best_epoch_{epoch}.pth"
+                torch.save(self.net.state_dict(), cur_model_path)
 
-                    # save new best model
-                    best_epoch = epoch
-                    cur_model_path = self.artifact_path / f"best_epoch_{epoch}.pth"
-                    torch.save(self.net.state_dict(), cur_model_path)
-
-                self.scheduler.step(val_loss)
+            self.scheduler.step(val_loss)
     
     def test(self, calib_loader, test_loader, alpha):
         self.net.eval()
         
         # calibration step
-        CP = importlib.import_module(f"cp.{self.cp_method}")
-        cp = CP.CP(self.device, self.net, alpha, self.n_classes, calib_loader)
+        cp = get_cp_instance(self.cp_method, self.device, self.net, alpha, self.n_classes, calib_loader)
 
         # run test
         running_loss = 0
@@ -123,14 +119,22 @@ class Trainer:
         len_class = np.zeros(self.n_classes)
 
         # conformal prediction metric
-        pred_sizes = []
-        coverages = []
+        pred_sizes = {
+            "marginal": [],
+            "class-cond": []
+        }
+        coverages = {
+            "marginal": [],
+            "class-cond": []
+        }
 
         cls_pred_sizes = {
-            c: [] for c in range(self.n_classes)
+            "marginal": {c: [] for c in range(self.n_classes)},
+            "class-cond": {c: [] for c in range(self.n_classes)}
         }
         cls_coverages = {
-            c: [] for c in range(self.n_classes)
+            "marginal": {c: [] for c in range(self.n_classes)},
+            "class-cond": {c: [] for c in range(self.n_classes)}
         }
 
         # initialize qhat
@@ -142,37 +146,33 @@ class Trainer:
             with torch.no_grad():
                 outputs = self.net(inputs)
 
-                # calculate prediction set
-                pred_sets, cond_pred_sets = cp.calculate_pred_set(outputs)
-                
-                # 1.1) calculate pred size
-                pred_sizes += pred_sets.sum(axis=1).cpu().tolist()
+                marg_pred_sets, cond_pred_sets = cp.calculate_pred_set(outputs)
 
-                # 1.2) calculate pred size per class
-                for c in range(self.n_classes):
-                    cls_idx = (targets == c).nonzero().reshape(-1)
-                    cls_pred_sets = pred_sets[cls_idx]
+                for cp_type in ["marginal", "class-cond"]:
+                    # 1) Assign prediction set 
+                    if cp_type == "marginal":
+                        pred_sets = marg_pred_sets
+                    elif cp_type == "class-cond":
+                        pred_sets = cond_pred_sets
+                    
+                    # 2) Calculate the size of prediction set 
+                    pred_sizes[cp_type] += pred_sets.sum(axis=1).cpu().tolist()
 
-                    cls_pred_sizes[c] += cls_pred_sets.sum(axis=1).cpu().tolist()
+                    # 3) Calculate the size of prediction set per class 
+                    for c in range(self.n_classes):
+                        cls_idx = (targets == c).nonzero().reshape(-1)
+                        cls_pred_sets = pred_sets[cls_idx]
+                        cls_pred_sizes[cp_type][c] += cls_pred_sets.sum(axis=1).cpu().tolist()
 
-                # 2.1) calculate coverage
-                indices = torch.arange(len(outputs), device=outputs.device)
-                coverages += pred_sets[indices, targets].cpu().tolist()
+                    # 4) Calculate the coverage 
+                    indices = torch.arange(len(outputs), device=outputs.device)
+                    coverages[cp_type] += pred_sets[indices, targets].cpu().tolist()
 
-                # 2.2) calculate coverage per class
-                for c in range(self.n_classes):
-                    cls_idx = (targets == c).nonzero().reshape(-1)
-                    cls_pred_sets = pred_sets[cls_idx]
-                    cls_coverages[c] += cls_pred_sets[:, c].cpu().tolist()
-
-                # TODO3:calculate conditional pred size 
-
-                # TODO4:calculate conditional pred size per class 
-
-                # TODO5:calculate conditional coverage 
-
-                # TODO6:calculate conditional coverage per class 
-
+                    # 5) calculate coverage per class
+                    for c in range(self.n_classes):
+                        cls_idx = (targets == c).nonzero().reshape(-1)
+                        cls_pred_sets = pred_sets[cls_idx]
+                        cls_coverages[cp_type][c] += cls_pred_sets[:, c].cpu().tolist()
 
                 # calculate ovr acc
                 _, preds = torch.max(outputs, 1)
@@ -196,45 +196,38 @@ class Trainer:
         test_loss = running_loss / (batch_idx + 1)
         print(f'test loss: {test_loss:.3f}')
 
-        with mlflow.start_run(run_id=self.run_id) as run:
-            cls_acc = correct_class / (len_class + 1e-8)
+        cls_acc = correct_class / (len_class + 1e-8)
 
-            cls_acc_dict = {
-                f"test_{k}_acc":cls_acc[idx] for k, idx in self.class_dict.items()
-            }
+        cls_acc_dict = {
+            f"test_{k}_acc":cls_acc[idx] for k, idx in self.class_dict.items()
+        }
 
-            marginal_cls_pred_sizes = {
-                f"marginal_cls_pred_size_{k}": sum(cls_pred_sizes[idx]) / len(cls_pred_sizes[idx]) for k, idx in self.class_dict.items()
-            }
+        # log acc related metrics
+        mlflow.log_metrics({
+            "test_loss": test_loss,
+            "ovr_test_acc": correct_ovr / len_ovr, 
+            **cls_acc_dict
+        })
 
-            marginal_cls_coverages = {
-                f"marginal_cls_coverage_{k}": sum(cls_coverages[idx]) / len(cls_coverages[idx]) for k, idx in self.class_dict.items()
-            }
-
-            marginal_perf = {
-                "alpha": alpha,
-                "marginal_coverage": sum(coverages) / len(coverages),
-                "marginal_pred_size": sum(pred_sizes) / len(pred_sizes),
-            }
-
+        # log CP related metrics
+        mlflow.log_metric("alpha", alpha)
+        for cp_type in ["marginal", "class-cond"]:
+            # log avg pred size and avg coverage for each type
             mlflow.log_metrics({
-                "test_loss": test_loss,
-                "ovr_test_acc": correct_ovr / len_ovr,
-                **cls_acc_dict,
-                **marginal_perf,
-                **marginal_cls_pred_sizes,
-                **marginal_cls_coverages
+                f"avg_{cp_type}_coverage": sum(coverages[cp_type]) / len(coverages[cp_type]),
+                f"avg_{cp_type}_pred_size": sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type])
             })
 
-            # TODO7: Create conformal prediction report
+            # log average pred size per class for each type 
+            mlflow.log_metrics({
+                f"{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx]) for k, idx in self.class_dict.items()
+            })
+
+            # log average coverage rate per class for each type
+            mlflow.log_metrics({
+                f"{cp_type}_cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx]) for k, idx in self.class_dict.items()
+            })
+
+        # TODO: Create conformal prediction report
 
         return test_loss
-
-    
-    def create_experiment(self, exp_name):
-        exp = mlflow.get_experiment_by_name(exp_name)
-        if exp is None:
-            exp_id = mlflow.create_experiment(exp_name)
-        else:
-            exp_id = exp.experiment_id
-        return exp_id
