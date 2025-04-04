@@ -6,8 +6,8 @@ import torch.nn as nn
 from torch import optim
 from pathlib import Path
 from torch.utils.data import DataLoader
-from utils.split_data_cifar10 import get_data
-from utils.trainer import Trainer
+from datasets import get_data
+from trainer import ConformalTrainer
 
 def create_experiment(exp_name):
     exp = mlflow.get_experiment_by_name(exp_name)
@@ -29,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=2)
     parser.add_argument("--exp_name", type=str, default="temp_exp")
     parser.add_argument("--alpha", type=float, default=0.1)
+    parser.add_argument("--dset_name", type=str, default="cifar10")
     parser.add_argument("--cp_method", type=str, default="hinge")
     args = parser.parse_args()
 
@@ -43,6 +44,7 @@ if __name__ == "__main__":
     max_epochs = args.max_epochs
     exp_name = args.exp_name
     alpha = args.alpha
+    dset_name = args.dset_name
     cp_method = args.cp_method
 
     exp_id = create_experiment(exp_name)
@@ -54,7 +56,7 @@ if __name__ == "__main__":
 
         # Init dataset
         # TODO: implement data_name to get_data
-        class_dict, train_dataset, val_dataset, test_dataset, calib_dataset = get_data(val_size, calib_size)
+        class_dict, train_dataset, val_dataset, test_dataset, calib_dataset = get_data(dset_name, val_size, calib_size)
 
         # Init loader
         train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
@@ -80,7 +82,7 @@ if __name__ == "__main__":
         )
 
         # Init trainer
-        trainer = Trainer(
+        trainer = ConformalTrainer(
             train_loader, val_loader, calib_loader, 
             device, net, optimizer, criterion, scheduler, exp_name, class_dict,
             cp_method, artifact_path

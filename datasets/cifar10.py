@@ -20,7 +20,7 @@ class TransformedSubset(Dataset):
     def __len__(self):
         return len(self.indices)
 
-def get_data(val_size=0.1, calib_size=0.1, split_seed1=42, split_seed2=42):
+def get_cifar10_data(val_size=0.1, calib_size=0.1, split_seed1=42, split_seed2=42):
     """
     train_size = tot_size - (val_size + calib_size)
     """
