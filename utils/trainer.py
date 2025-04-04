@@ -3,7 +3,7 @@ import torch
 import mlflow
 import numpy as np
 from pathlib import Path
-from cp import get_cp_instance
+from cp import create_cp
 
 class Trainer:
     def __init__(self, 
@@ -109,7 +109,7 @@ class Trainer:
         self.net.eval()
         
         # calibration step
-        cp = get_cp_instance(self.cp_method, self.device, self.net, alpha, self.n_classes, calib_loader)
+        cp = create_cp(self.cp_method, self.device, self.net, alpha, self.n_classes, calib_loader)
 
         # run test
         running_loss = 0

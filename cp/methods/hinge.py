@@ -1,18 +1,12 @@
 import torch
 import numpy as np
 import torch.nn.functional as F
+from cp import BaseCP
 
 
-class CP:
-    def __init__(self, device, net, alpha, n_classes, calib_loader):
-        self.device = device
-        self.net = net
-        self.alpha = alpha
-        self.n_classes = n_classes
-        self.calib_loader = calib_loader
-
-        self.qhat = None
-        self.cond_qhats = None
+class HingeCP(BaseCP):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def calculate_scores(self):
         tot_targets = []
