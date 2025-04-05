@@ -10,9 +10,6 @@ class HingeCP(BaseCP):
 
     def calculate_scores(self):
         tot_targets = []
-        cond_scores = []
-        cond_samples = []
-
         true_probs = []
         for batch_idx, (inputs, targets) in enumerate(self.calib_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
@@ -20,7 +17,9 @@ class HingeCP(BaseCP):
             with torch.no_grad():
                 tot_targets += targets.cpu().tolist()
 
-                probs = F.softmax(self.net(inputs), dim=1)
+                outputs = self.net(inputs)
+
+                probs = F.softmax(outputs, dim=1)
                 indices = torch.arange(probs.size(0), device=probs.device)
                 _true_probs = probs[indices, targets].cpu().tolist()
                 true_probs += _true_probs
@@ -32,10 +31,11 @@ class HingeCP(BaseCP):
         scores = 1 - true_probs
 
         # cond scores
+        cond_scores = []
+        cond_samples = []
         for c in range(self.n_classes):
             cls_idx = np.where(tot_targets == c)[0]
-            cls_probs = true_probs[cls_idx]
-            cond_scores.append(1 - cls_probs)
+            cond_scores.append(scores[cls_idx])
             cond_samples.append(len(cls_idx))
 
         return scores, cond_scores, cond_samples
@@ -66,7 +66,7 @@ class HingeCP(BaseCP):
         # calculate marginal pred set
         pred_sets = probs >= (1 - self.qhat)
 
-        # calculate cond pred_size
+        # calculate cond pred set
         cond_pred_sets = probs >= (1 - self.cond_qhats)
 
         return pred_sets, cond_pred_sets
