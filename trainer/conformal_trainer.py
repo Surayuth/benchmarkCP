@@ -1,7 +1,9 @@
 import torch
 import mlflow
 import numpy as np
+import polars as pl
 from cp import create_cp
+from pathlib import Path
 from .base import BaseTrainer
 
 class ConformalTrainer(BaseTrainer):
@@ -23,7 +25,7 @@ class ConformalTrainer(BaseTrainer):
         self.class_dict = class_dict
         self.n_classes = len(self.class_dict)
         self.cp_method = cp_method
-        self.artifact_path = artifact_path
+        self.artifact_path = Path(artifact_path)
     
     def test(self, calib_loader, test_loader, alpha):
         self.net.eval()
@@ -123,13 +125,32 @@ class ConformalTrainer(BaseTrainer):
         }
 
         # log acc related metrics
-        mlflow.log_metrics({
+        ovr_test_acc = {
             "test_loss": test_loss,
             "ovr_test_acc": correct_ovr / len_ovr, 
-            **cls_acc_dict
-        })
+        }
+        mlflow.log_metrics(ovr_test_acc)
 
         # log CP related metrics
+        cp_report = {
+            "avg_pred_size": {
+                "marginal": 0,
+                "class-cond": 0
+            },
+            "avg_coverage": {
+                "marginal": 0,
+                "class-cond": 0
+            },
+            "cls_pred_size": {
+                "marginal": {},
+                "class-cond": {}
+            },
+            "cls_coverage": {
+                "marginal": {},
+                "class-cond": {}
+            }
+        }
+
         mlflow.log_metric("alpha", alpha)
         for cp_type in ["marginal", "class-cond"]:
             # log avg pred size and avg coverage for each type
@@ -137,17 +158,57 @@ class ConformalTrainer(BaseTrainer):
                 f"avg_{cp_type}_coverage": sum(coverages[cp_type]) / len(coverages[cp_type]),
                 f"avg_{cp_type}_pred_size": sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type])
             })
+            
+            cp_report["avg_pred_size"][cp_type] = sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type])
+            cp_report["avg_coverage"][cp_type] = sum(coverages[cp_type]) / len(coverages[cp_type])
 
-            # log average pred size per class for each type 
-            mlflow.log_metrics({
-                f"{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx]) for k, idx in self.class_dict.items()
-            })
+            for k, idx in self.class_dict.items():
+                cp_report["cls_pred_size"][cp_type][k] = sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
+                cp_report["cls_coverage"][cp_type][k] = sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
+        
+        
+        # Overall acc metrics
+        acc_dict = ovr_test_acc | cls_acc_dict
+        ovr_acc_stats = pl.DataFrame({
+            "stat": list(acc_dict.keys()),
+            "values": list(acc_dict.values())
+        })
 
-            # log average coverage rate per class for each type
-            mlflow.log_metrics({
-                f"{cp_type}_cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx]) for k, idx in self.class_dict.items()
-            })
+        # Overall CP metrics
+        ovr_cp_dict = {
+                f"avg_pred_size_{cp_type}": cp_report["avg_pred_size"][cp_type]
+                for cp_type in ["marginal", "class-cond"]
+            } | {
+                f"avg_coverage_{cp_type}": cp_report["avg_coverage"][cp_type]
+                for cp_type in ["marginal", "class-cond"]
+            }
+        
+        ovr_cp_dict = pl.DataFrame(
+            {
+            "stat": ["avg_pred_size", "avg_coverage"],
+            } |
+            {
+                cp_type: [cp_report["avg_pred_size"][cp_type], cp_report["avg_coverage"][cp_type]]
+                for cp_type in ["marginal", "class-cond"]
+            }
+        )
+        ovr_cp_stats = pl.DataFrame(ovr_cp_dict)
 
-        # TODO: Create conformal prediction report
+        # Class-based CP metrics
+        avg_cls_pred_size_df = pl.DataFrame(
+                {"class": list(self.class_dict.keys())} |
+                {cp_type: list(cp_report["cls_pred_size"][cp_type].values()) for cp_type in ["marginal", "class-cond"]}
+            )
+        
+        avg_cls_coverage_df = pl.DataFrame(
+                {"class": list(self.class_dict.keys())} | 
+                {cp_type: list(cp_report["cls_coverage"][cp_type].values()) for cp_type in ["marginal", "class-cond"]}
+            )
+
+        # Export to csv
+        ovr_acc_stats.write_csv(self.artifact_path / "ovr_acc_stats.csv")
+        ovr_cp_stats.write_csv(self.artifact_path / "ovr_cp_stats.csv")
+        avg_cls_pred_size_df.write_csv(self.artifact_path / "avg_cls_pred_size.csv")
+        avg_cls_coverage_df.write_csv(self.artifact_path / "avg_cls_coverage.csv")
 
         return test_loss
