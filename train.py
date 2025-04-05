@@ -8,6 +8,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 from datasets import get_data
 from trainer import ConformalTrainer
+from models import load_model
 
 def create_experiment(exp_name):
     exp = mlflow.get_experiment_by_name(exp_name)
@@ -55,7 +56,6 @@ if __name__ == "__main__":
         mlflow.log_params(vars(args))
 
         # Init dataset
-        # TODO: implement data_name to get_data
         class_dict, train_dataset, val_dataset, test_dataset, calib_dataset = get_data(dset_name, val_size, calib_size)
 
         # Init loader
@@ -65,9 +65,7 @@ if __name__ == "__main__":
         calib_loader = DataLoader(calib_dataset, batch_size=eval_batch_size, shuffle=True)
         
         # Init model
-        # TODO: write an import function for this
-        MODEL = importlib.import_module(f"models.{model_name}")
-        net = MODEL.load_model(model_version)
+        net = load_model(model_name, model_version)
 
         # Init loss function
         criterion = nn.CrossEntropyLoss()

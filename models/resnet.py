@@ -94,7 +94,7 @@ class ResNet(nn.Module):
         return out
 
 
-def load_model(version):
+def load_resnet(version):
     if version == "18":
         return ResNet(BasicBlock, [2, 2, 2, 2])
 
