@@ -13,28 +13,69 @@ class APSCP(BaseCP):
         """
         Calculate batch nonconformity scores.
         """
-        y = F.one_hot(targets, num_classes=probs.shape[1])
+        N = probs.shape[0]
 
         # sort prob and target 
-        sorted_idx = torch.argsort(probs, descending=True, dim=1)
-        sorted_p = torch.gather(probs, 1, sorted_idx)
-        sorted_y = torch.gather(y, 1, sorted_idx)
-        sorted_target_idx = torch.argmax(sorted_y, dim=1)
+        sorted_idx = probs.argsort(descending=True, dim=1)
+        sorted_p = probs.gather(1, sorted_idx)
+        target_idx = torch.where(sorted_idx == targets.unsqueeze(1))[1]
 
         # calculate p at target
-        p_at_target = sorted_p[torch.arange(len(probs)), sorted_target_idx]
+        p_at_target = sorted_p[torch.arange(N), target_idx]
 
         # calculate cumsum p to target
-        cumsum_p = torch.cumsum(sorted_p, dim=1)
-        cumsum_p_at_target = cumsum_p[torch.arange(len(probs)), sorted_target_idx]
+        cumsum_p = sorted_p.cumsum(dim=1)
+        cumsum_p_to_target = cumsum_p[torch.arange(N), target_idx]
 
         # calculate E
         # we use this formula because we need the target in the prediction set precisely
         # this requires u > V. After solving the equation, we get the batch_scores.
-        u = torch.rand(len(probs), device=self.device)
-        batch_scores = cumsum_p_at_target - u * p_at_target
+        u = torch.rand(N, device=self.device)
+        batch_scores = cumsum_p_to_target - u * p_at_target
 
         return batch_scores
+
+    def calculate_pred_set(self, outputs, normalized=False):
+        """
+        Calculate pred set for marginal and class-cond types.
+        Output: pred_sets (marginal pred sets, cls-cond pred sets)
+        """
+        if normalized:
+            probs = outputs
+        else:
+            probs = F.softmax(outputs, dim=1)
+
+        N, C = probs.shape
+
+        # calculate cumsum p and prob at last idx
+        sorted_p, sorted_idx = torch.sort(probs, descending=True, dim=1)
+        cumsum_p = sorted_p.cumsum(dim=1)
+
+        pred_sets = []
+        for cp_type in ["marginal", "class-cond"]:
+            # this method only change qhat for marg and class-cond (sec. 2.5)
+            if cp_type == "marginal":
+                qhat = self.qhat
+            elif cp_type == "class-cond":
+                qhat = max(self.cond_qhats)
+
+            last_included_idx = (cumsum_p >= qhat).int().argmax(dim=1)
+            cumsum_p_to_idx = cumsum_p[torch.arange(N), last_included_idx]
+            prob_at_idx = sorted_p[torch.arange(N), last_included_idx]
+
+            # compare u <= v
+            u = torch.rand(N, device=self.device)
+            v = 1 / prob_at_idx * (cumsum_p_to_idx - qhat)
+            final_included_idx = last_included_idx - (u <= v).int()
+            selected_idx = torch.arange(C, device=self.device).expand(N, -1) <= final_included_idx.unsqueeze(1)
+
+            # we need to rearrange each idx to the correct position
+            back_idx = sorted_idx.argsort(dim=1)
+            _pred_sets = selected_idx.gather(1, back_idx)
+
+            pred_sets.append(_pred_sets)
+
+        return pred_sets 
             
 
         

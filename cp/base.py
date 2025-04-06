@@ -62,25 +62,11 @@ class BaseCP(ABC):
             q = np.ceil((n_calib + 1) * (1 - self.alpha)) / n_calib
             cond_qhat = np.quantile(cond_scores[c], q, method="higher")
             cond_qhats.append(cond_qhat)
-        self.cond_qhats = torch.tensor(cond_qhats, device=self.device)
+        self.cond_qhats = cond_qhats
 
+    @abstractmethod
     def calculate_pred_set(self, outputs, normalized=False):
-        if normalized:
-            probs = outputs
-        else:
-            probs = F.softmax(outputs, dim=1)
-
-        pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
-        cond_pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
-
-        for c in range(self.n_classes):
-            c_targets = c * torch.ones(len(probs), dtype=torch.long, device=self.device)
-            c_scores = self.score_func(probs, c_targets)
-
-            pred_sets[:, c] = c_scores <= self.qhat
-            cond_pred_sets[:, c] = c_scores <= self.cond_qhats[c]
-
-        return pred_sets, cond_pred_sets
+        pass
     
     @abstractmethod
     def score_func(self, probs, targets, *args, **kwargs):
