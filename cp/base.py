@@ -1,3 +1,6 @@
+import torch
+import numpy as np
+import torch.nn.functional as F
 from abc import ABC, abstractmethod
 
 class BaseCP(ABC):
@@ -10,14 +13,75 @@ class BaseCP(ABC):
         self.qhat = None
         self.cond_qhats = None
     
-    @abstractmethod
     def calculate_scores(self):
-        pass
+        """
+        Calculate nonconformity scores from calibration set
+        """
+        scores = []
+
+        tot_targets = []
+        for batch_idx, (inputs, targets) in enumerate(self.calib_loader):
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+            with torch.no_grad():
+                tot_targets += targets.cpu().tolist()
+
+                outputs = self.net(inputs)
+
+                probs = F.softmax(outputs, dim=1)
+                batch_scores = self.score_func(probs, targets)
+                scores += batch_scores.cpu().tolist()
+
+        tot_targets = np.array(tot_targets)
+
+        # marginal scores
+        scores = np.array(scores)
+        
+        # cond scores
+        cond_scores = []
+        cond_samples = []
+        for c in range(self.n_classes):
+            cls_idx = np.where(tot_targets == c)[0]
+            cond_scores.append(scores[cls_idx])
+            cond_samples.append(len(cls_idx))
+
+        return scores, cond_scores, cond_samples
     
-    @abstractmethod
     def calculate_qhat(self):
-        pass
+        scores, cond_scores, cond_samples = self.calculate_scores()
+
+        # marginal qhat
+        n_calib = len(scores)
+        q = np.ceil((n_calib + 1) * (1 - self.alpha)) / n_calib
+        self.qhat = np.quantile(scores, q, method="higher")
+
+        # cond qhat
+        cond_qhats = []
+        for c in range(self.n_classes):
+            n_calib = cond_samples[c]
+            q = np.ceil((n_calib + 1) * (1 - self.alpha)) / n_calib
+            cond_qhat = np.quantile(cond_scores[c], q, method="higher")
+            cond_qhats.append(cond_qhat)
+        self.cond_qhats = torch.tensor(cond_qhats, device=self.device)
+
+    def calculate_pred_set(self, outputs, normalized=False):
+        if normalized:
+            probs = outputs
+        else:
+            probs = F.softmax(outputs, dim=1)
+
+        pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
+        cond_pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
+
+        for c in range(self.n_classes):
+            c_targets = c * torch.ones(len(probs), dtype=torch.long, device=self.device)
+            c_scores = self.score_func(probs, c_targets)
+
+            pred_sets[:, c] = c_scores <= self.qhat
+            cond_pred_sets[:, c] = c_scores <= self.cond_qhats[c]
+
+        return pred_sets, cond_pred_sets
     
     @abstractmethod
-    def calculate_pred_set(self):
+    def score_func(self, probs, targets, *args, **kwargs):
         pass

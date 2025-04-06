@@ -34,6 +34,9 @@ if __name__ == "__main__":
     parser.add_argument("--cp_method", type=str, default="hinge")
     args = parser.parse_args()
 
+    # TODO: add command to check supported method
+    # TODO: print utilized configs at the start of the running
+
     # Assign vars
     device = "cuda" if torch.cuda.is_available() else "cpu"
     val_size = args.val_size

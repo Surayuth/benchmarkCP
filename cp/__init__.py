@@ -1,9 +1,11 @@
 from .base import BaseCP
 from .methods.hinge import HingeCP
+from .methods.aps import APSCP
 
 # Dictionary-based factory pattern
 _METHODS = {
     'hinge': HingeCP,
+    'aps': APSCP,
     # Add more methods as you implement them
 }
 
