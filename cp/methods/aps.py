@@ -16,8 +16,7 @@ class APSCP(BaseCP):
         N = probs.shape[0]
 
         # sort prob and target 
-        sorted_idx = probs.argsort(descending=True, dim=1)
-        sorted_p = probs.gather(1, sorted_idx)
+        sorted_p, sorted_idx = probs.sort(descending=True, dim=1)
         target_idx = torch.where(sorted_idx == targets.unsqueeze(1))[1]
 
         # calculate p at target
@@ -48,12 +47,13 @@ class APSCP(BaseCP):
         N, C = probs.shape
 
         # calculate cumsum p and prob at last idx
-        sorted_p, sorted_idx = torch.sort(probs, descending=True, dim=1)
+        sorted_p, sorted_idx = probs.sort(descending=True, dim=1)
         cumsum_p = sorted_p.cumsum(dim=1)
 
         pred_sets = []
+        u = torch.rand(N, device=self.device)
         for cp_type in ["marginal", "class-cond"]:
-            # this method only change qhat for marg and class-cond (sec. 2.5)
+            # this method only changes qhat for marg and class-cond (sec. 2.5)
             if cp_type == "marginal":
                 qhat = self.qhat
             elif cp_type == "class-cond":
@@ -64,7 +64,6 @@ class APSCP(BaseCP):
             prob_at_idx = sorted_p[torch.arange(N), last_included_idx]
 
             # compare u <= v
-            u = torch.rand(N, device=self.device)
             v = 1 / prob_at_idx * (cumsum_p_to_idx - qhat)
             final_included_idx = last_included_idx - (u <= v).int()
             selected_idx = torch.arange(C, device=self.device).expand(N, -1) <= final_included_idx.unsqueeze(1)
