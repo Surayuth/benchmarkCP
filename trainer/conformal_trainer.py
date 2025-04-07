@@ -3,7 +3,6 @@ import mlflow
 import numpy as np
 import polars as pl
 from cp import create_cp
-from pathlib import Path
 from .base import BaseTrainer
 
 class ConformalTrainer(BaseTrainer):
@@ -13,25 +12,24 @@ class ConformalTrainer(BaseTrainer):
                 calib_loader,
                 device, 
                 net, optimizer, criterion, scheduler, exp_name, class_dict,
-                cp_method,
-                artifact_path
+                artifact_path, cp_method, method_args, 
                 ):
         super().__init__(
             train_loader, val_loader, device, net, optimizer,
-            criterion, scheduler, exp_name
+            criterion, scheduler, exp_name, artifact_path
             )
         
         self.calib_loader = calib_loader
         self.class_dict = class_dict
         self.n_classes = len(self.class_dict)
         self.cp_method = cp_method
-        self.artifact_path = Path(artifact_path)
+        self.method_args = method_args
     
-    def test(self, calib_loader, test_loader, alpha):
+    def test(self, calib_loader, test_loader, alpha, r):
         self.net.eval()
         
         # calibration step
-        cp = create_cp(self.cp_method, self.device, self.net, alpha, self.n_classes, calib_loader)
+        cp = create_cp(self.cp_method, self.method_args, self.device, self.net, alpha, self.n_classes, calib_loader)
 
         # run test
         running_loss = 0
@@ -68,6 +66,21 @@ class ConformalTrainer(BaseTrainer):
             with torch.no_grad():
                 outputs = self.net(inputs)
 
+                # calculate ovr acc
+                _, preds = torch.max(outputs, 1)
+                correct_ovr += (preds == targets).sum().item()
+                len_ovr += len(preds)
+
+                # calculate class-based acc
+                for c in range(self.n_classes):
+                    cls_idx = (targets == c).nonzero().reshape(-1)
+                    cls_preds = preds[cls_idx]
+                    cls_targets = targets[cls_idx]
+                    cls_correct = (cls_preds == cls_targets).sum().item()
+                    correct_class[c] += cls_correct
+                    len_class[c] += len(cls_preds)
+
+                # calculate cp performance
                 marg_pred_sets, cond_pred_sets = cp.calculate_pred_set(outputs)
 
                 for cp_type in ["marginal", "class-cond"]:
@@ -96,25 +109,11 @@ class ConformalTrainer(BaseTrainer):
                         cls_pred_sets = pred_sets[cls_idx]
                         cls_coverages[cp_type][c] += cls_pred_sets[:, c].cpu().tolist()
 
-                # calculate ovr acc
-                _, preds = torch.max(outputs, 1)
-                correct_ovr += (preds == targets).sum().item()
-                len_ovr += len(preds)
-
-                # calculate class-based acc
-                for c in range(self.n_classes):
-                    cls_idx = (targets == c).nonzero().reshape(-1)
-                    cls_preds = preds[cls_idx]
-                    cls_targets = targets[cls_idx]
-                    cls_correct = (cls_preds == cls_targets).sum().item()
-                    correct_class[c] += cls_correct
-                    len_class[c] += len(cls_preds)
-
-
             loss = self.criterion(outputs, targets)
 
             running_loss += loss.item()
 
+        # log acc related metrics
         test_loss = running_loss / (batch_idx + 1)
         print(f'test loss: {test_loss:.3f}')
 
@@ -124,91 +123,36 @@ class ConformalTrainer(BaseTrainer):
             f"test_{k}_acc":cls_acc[idx] for k, idx in self.class_dict.items()
         }
 
-        # log acc related metrics
         ovr_test_acc = {
             "test_loss": test_loss,
             "ovr_test_acc": correct_ovr / len_ovr, 
+            **cls_acc_dict
         }
-        mlflow.log_metrics(ovr_test_acc)
+        mlflow.log_metrics(ovr_test_acc, step=r)
 
-        # log CP related metrics
-        cp_report = {
-            "avg_pred_size": {
-                "marginal": 0,
-                "class-cond": 0
-            },
-            "avg_coverage": {
-                "marginal": 0,
-                "class-cond": 0
-            },
-            "cls_pred_size": {
-                "marginal": {},
-                "class-cond": {}
-            },
-            "cls_coverage": {
-                "marginal": {},
-                "class-cond": {}
-            }
-        }
 
+        # log cp metrics
         mlflow.log_metric("alpha", alpha)
         for cp_type in ["marginal", "class-cond"]:
             # log avg pred size and avg coverage for each type
             mlflow.log_metrics({
+                f"avg_{cp_type}_pred_size": sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type]),
                 f"avg_{cp_type}_coverage": sum(coverages[cp_type]) / len(coverages[cp_type]),
-                f"avg_{cp_type}_pred_size": sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type])
-            })
-            
-            cp_report["avg_pred_size"][cp_type] = sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type])
-            cp_report["avg_coverage"][cp_type] = sum(coverages[cp_type]) / len(coverages[cp_type])
+            }, step=r)
 
-            for k, idx in self.class_dict.items():
-                cp_report["cls_pred_size"][cp_type][k] = sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
-                cp_report["cls_coverage"][cp_type][k] = sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
-        
-        
-        # Overall acc metrics
-        acc_dict = ovr_test_acc | cls_acc_dict
-        ovr_acc_stats = pl.DataFrame({
-            "stat": list(acc_dict.keys()),
-            "values": list(acc_dict.values())
-        })
+            # log avg cls pred size and avg cls coverage for each type
+            mlflow.log_metrics({
+                f"cls_{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
+                for k, idx in self.class_dict.items()
+            }, step=r)
 
-        # Overall CP metrics
-        ovr_cp_dict = {
-                f"avg_pred_size_{cp_type}": cp_report["avg_pred_size"][cp_type]
-                for cp_type in ["marginal", "class-cond"]
-            } | {
-                f"avg_coverage_{cp_type}": cp_report["avg_coverage"][cp_type]
-                for cp_type in ["marginal", "class-cond"]
+            avg_cls_coverages = {
+                f"cls_{cp_type}_cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
+                for k, idx in self.class_dict.items()
             }
-        
-        ovr_cp_dict = pl.DataFrame(
-            {
-            "stat": ["avg_pred_size", "avg_coverage"],
-            } |
-            {
-                cp_type: [cp_report["avg_pred_size"][cp_type], cp_report["avg_coverage"][cp_type]]
-                for cp_type in ["marginal", "class-cond"]
-            }
-        )
-        ovr_cp_stats = pl.DataFrame(ovr_cp_dict)
+            mlflow.log_metrics(avg_cls_coverages, step=r)
 
-        # Class-based CP metrics
-        avg_cls_pred_size_df = pl.DataFrame(
-                {"class": list(self.class_dict.keys())} |
-                {cp_type: list(cp_report["cls_pred_size"][cp_type].values()) for cp_type in ["marginal", "class-cond"]}
-            )
-        
-        avg_cls_coverage_df = pl.DataFrame(
-                {"class": list(self.class_dict.keys())} | 
-                {cp_type: list(cp_report["cls_coverage"][cp_type].values()) for cp_type in ["marginal", "class-cond"]}
-            )
-
-        # Export to csv
-        ovr_acc_stats.write_csv(self.artifact_path / "ovr_acc_stats.csv")
-        ovr_cp_stats.write_csv(self.artifact_path / "ovr_cp_stats.csv")
-        avg_cls_pred_size_df.write_csv(self.artifact_path / "avg_cls_pred_size.csv")
-        avg_cls_coverage_df.write_csv(self.artifact_path / "avg_cls_coverage.csv")
+            avg_abs_cls_coverage =  np.abs(1 - alpha - np.array(list(avg_cls_coverages.values()))).mean()
+            mlflow.log_metric(f"avg_abs_cls_{cp_type}_coverage", avg_abs_cls_coverage, step=r)
 
         return test_loss

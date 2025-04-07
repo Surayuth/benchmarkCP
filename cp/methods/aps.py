@@ -1,4 +1,4 @@
-# see: https://proceedings.neurips.cc/paper/2020/file/244edd7e85dc81602b7615cd705545f5-Paper.pdf 
+# paper: https://proceedings.neurips.cc/paper/2020/file/244edd7e85dc81602b7615cd705545f5-Paper.pdf 
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ class APSCP(BaseCP):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    def score_func(self, probs, targets, *args, **kwargs):
+    def score_func(self, probs, targets):
         """
         Calculate batch nonconformity scores.
         """

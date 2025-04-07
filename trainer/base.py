@@ -10,6 +10,7 @@ class BaseTrainer:
                 device, 
                 net, optimizer, 
                 criterion, scheduler, exp_name,
+                artifact_path
                 ):
         
         self.train_loader = train_loader
@@ -20,6 +21,7 @@ class BaseTrainer:
         self.criterion = criterion
         self.scheduler = scheduler
         self.exp_name = exp_name
+        self.artifact_path = artifact_path
 
     def _train_one_epoch(self, epoch, print_freq=100):
         self.net.train()

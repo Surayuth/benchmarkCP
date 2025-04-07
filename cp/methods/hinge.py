@@ -8,7 +8,7 @@ class HingeCP(BaseCP):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def score_func(self, probs, targets, *args, **kwargs):
+    def score_func(self, probs, targets):
         target_probs = probs[torch.arange(len(probs)), targets]
         return 1 - target_probs
 

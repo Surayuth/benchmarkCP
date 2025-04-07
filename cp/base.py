@@ -4,7 +4,8 @@ import torch.nn.functional as F
 from abc import ABC, abstractmethod
 
 class BaseCP(ABC):
-    def __init__(self, device, net, alpha, n_classes, calib_loader):
+    def __init__(self, method_args, device, net, alpha, n_classes, calib_loader):
+        self.method_args = method_args
         self.device = device
         self.net = net
         self.alpha = alpha
@@ -29,7 +30,7 @@ class BaseCP(ABC):
                 outputs = self.net(inputs)
 
                 probs = F.softmax(outputs, dim=1)
-                batch_scores = self.score_func(probs, targets)
+                batch_scores = self.score_func(probs, targets, **self.method_args)
                 scores += batch_scores.cpu().tolist()
 
         tot_targets = np.array(tot_targets)
@@ -69,5 +70,5 @@ class BaseCP(ABC):
         pass
     
     @abstractmethod
-    def score_func(self, probs, targets, *args, **kwargs):
+    def score_func(self, probs, targets, **kwargs):
         pass

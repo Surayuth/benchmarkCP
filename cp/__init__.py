@@ -4,8 +4,21 @@ from .methods.aps import APSCP
 
 # Dictionary-based factory pattern
 _METHODS = {
-    'hinge': HingeCP,
-    'aps': APSCP,
+    'hinge': {
+        'class': HingeCP,
+        'params': [] 
+    },
+    'aps': {
+        'class': APSCP,
+        'params': []  
+    },
+    'raps': {
+        'class': None,  # To be implemented
+        'params': [
+            {'name': 'lamb', 'type': float, 'default': 0.0, 'help': 'Lambda regularization parameter'},
+            {'name': 'kreg', 'type': int, 'default': 1, 'help': 'K regularization parameter'}
+        ]
+    }
     # Add more methods as you implement them
 }
 
@@ -24,4 +37,4 @@ def create_cp(method, *args, **kwargs):
         available = list(_METHODS.keys())
         raise ValueError(f"Method '{method}' not found. Available methods: {available}")
     
-    return _METHODS[method](*args, **kwargs)
+    return _METHODS[method]['class'](*args, **kwargs)
