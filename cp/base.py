@@ -30,7 +30,7 @@ class BaseCP(ABC):
                 outputs = self.net(inputs)
 
                 probs = F.softmax(outputs, dim=1)
-                batch_scores = self.score_func(probs, targets, **self.method_args)
+                batch_scores = self.score_func(probs, targets)
                 scores += batch_scores.cpu().tolist()
 
         tot_targets = np.array(tot_targets)

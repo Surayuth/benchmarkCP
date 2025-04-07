@@ -1,6 +1,9 @@
 from .base import BaseCP
 from .methods.hinge import HingeCP
 from .methods.aps import APSCP
+from .methods.raps import RAPSCP
+
+# TODO: implement auto method discovery
 
 # Dictionary-based factory pattern
 _METHODS = {
@@ -13,10 +16,10 @@ _METHODS = {
         'params': []  
     },
     'raps': {
-        'class': None,  # To be implemented
+        'class': RAPSCP, 
         'params': [
             {'name': 'lamb', 'type': float, 'default': 0.0, 'help': 'Lambda regularization parameter'},
-            {'name': 'kreg', 'type': int, 'default': 1, 'help': 'K regularization parameter'}
+            {'name': 'kreg', 'type': int, 'default': 3, 'help': 'K regularization parameter'}
         ]
     }
     # Add more methods as you implement them

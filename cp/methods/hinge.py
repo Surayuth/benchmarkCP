@@ -5,8 +5,8 @@ from cp import BaseCP
 
 
 class HingeCP(BaseCP):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, method_args, device, net, alpha, n_classes, calib_loader):
+        super().__init__(method_args, device, net, alpha, n_classes, calib_loader)
 
     def score_func(self, probs, targets):
         target_probs = probs[torch.arange(len(probs)), targets]
