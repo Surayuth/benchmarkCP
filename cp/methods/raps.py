@@ -68,9 +68,9 @@ class RAPSCP(BaseCP):
             last_included_idx = (cumsum_p + reg_terms1 >= qhat).int().argmax(dim=1)
             cumsum_p_to_idx = cumsum_p[torch.arange(N), last_included_idx]
             prob_at_idx = sorted_p[torch.arange(N), last_included_idx]
-            
+
             # compare u <= v
-            reg_terms2 = self.lamb * ((last_included_idx + 1) > self.kreg)
+            reg_terms2 = self.lamb * (last_included_idx + 1 > self.kreg)
             reg_terms3 = self.lamb * (last_included_idx + 1 - self.kreg).clamp_min(0)
 
             v = 1 / (prob_at_idx + reg_terms2) * (cumsum_p_to_idx + reg_terms3 - qhat)

@@ -60,9 +60,9 @@ class Bottleneck(nn.Module):
         return out
 
 
-class ResNet(nn.Module):
+class Cifar10ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10):
-        super(ResNet, self).__init__()
+        super(Cifar10ResNet, self).__init__()
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
@@ -94,7 +94,7 @@ class ResNet(nn.Module):
         return out
 
 
-def load_resnet(version):
+def load_cifar10_resnet(version):
     if version == "18":
-        return ResNet(BasicBlock, [2, 2, 2, 2])
+        return Cifar10ResNet(BasicBlock, [2, 2, 2, 2])
 

@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
-    # TODO: print utilized configs at the start of the running
+    # TODO: add imagenet dataset
 
     # Assign vars
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -38,6 +38,7 @@ if __name__ == "__main__":
     dset_name = args.dset_name
     cp_method = args.cp_method
     repeats = args.repeats
+    test_only = args.test_only
 
     # Assign method-specific vars
     method_args = get_method_params(args, cp_method)
@@ -72,7 +73,7 @@ if __name__ == "__main__":
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer, mode='min', factor=0.1, patience=3
             )
-
+        
             # Init trainer
             trainer = ConformalTrainer(
                 train_loader, val_loader, calib_loader, 
@@ -80,8 +81,9 @@ if __name__ == "__main__":
                 artifact_path, cp_method, method_args,
                 )
 
-            # Train 
-            trainer.train(max_epochs)
+            if not test_only:
+                # Train 
+                trainer.train(max_epochs)
 
             # Test
             trainer.test(calib_loader, test_loader, alpha, r)
