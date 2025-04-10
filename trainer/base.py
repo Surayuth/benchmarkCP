@@ -3,18 +3,15 @@ import torch
 import mlflow
 import numpy as np
 
+
 class BaseTrainer:
     def __init__(self, 
-                train_loader,
-                val_loader,
                 device, 
                 net, optimizer, 
                 criterion, scheduler, exp_name,
                 artifact_path
                 ):
         
-        self.train_loader = train_loader
-        self.val_loader = val_loader
         self.device = device
         self.net = net.to(device)
         self.optimizer = optimizer
@@ -23,13 +20,13 @@ class BaseTrainer:
         self.exp_name = exp_name
         self.artifact_path = artifact_path
 
-    def _train_one_epoch(self, epoch, print_freq=100):
+    def _train_one_epoch(self, train_loader, epoch, print_freq=100):
         self.net.train()
 
         running_loss = 0
         ovr_loss = 0
 
-        for batch_idx, (inputs, targets) in enumerate(self.train_loader):
+        for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
             self.optimizer.zero_grad()
@@ -51,11 +48,11 @@ class BaseTrainer:
         return train_loss
 
 
-    def _val_one_epoch(self, epoch):
+    def _val_one_epoch(self, val_loader, epoch):
         self.net.eval()
 
         running_loss = 0
-        for batch_idx, (inputs, targets) in enumerate(self.val_loader):
+        for batch_idx, (inputs, targets) in enumerate(val_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
             with torch.no_grad():
@@ -68,13 +65,13 @@ class BaseTrainer:
         print(f'[{epoch}] val loss: {val_loss:.3f}')
         return val_loss
     
-    def train(self, max_epochs):
+    def train(self, train_loader, val_loader, max_epochs):
         min_val_loss = np.inf
 
         best_epoch = 1
         for epoch in range(1, max_epochs+1):
-            train_loss = self._train_one_epoch(epoch)
-            val_loss = self._val_one_epoch(epoch)
+            train_loss = self._train_one_epoch(train_loader, epoch)
+            val_loss = self._val_one_epoch(val_loader, epoch)
 
             mlflow.log_metrics({
                 "train_loss": train_loss,

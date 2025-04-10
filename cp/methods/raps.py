@@ -5,8 +5,8 @@ import torch.nn.functional as F
 from cp import BaseCP
 
 class RAPSCP(BaseCP):
-    def __init__(self, method_args, device, net, alpha, n_classes, calib_loader):
-        super().__init__(method_args, device, net, alpha, n_classes, calib_loader)
+    def __init__(self, method_args, device, net, alpha, n_classes):
+        super().__init__(method_args, device, net, alpha, n_classes)
         self.lamb = method_args["lamb"]
         self.kreg = method_args["kreg"]
     

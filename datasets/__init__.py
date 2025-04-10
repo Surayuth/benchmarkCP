@@ -1,9 +1,11 @@
 # datasets/__init__.py
 from .cifar10 import get_cifar10_data
+from .imagenet1k import get_test_calib_data
 
 # Dictionary-based factory pattern for datasets
 _DATASETS = {
     'cifar10': get_cifar10_data,
+    'imagenet1k': get_test_calib_data
 }
 
 def get_data(dset_name, val_size, calib_size, **kwargs):

@@ -77,3 +77,7 @@ def get_cifar10_data(val_size=0.1, calib_size=0.1, split_seed1=42, split_seed2=4
     )
 
     return class_dict, train_dataset, val_dataset, calib_dataset, test_dataset
+
+if __name__ == "__main__":
+    class_dict, train_dataset, val_dataset, calib_dataset, test_dataset = get_cifar10_data()
+    print(class_dict)

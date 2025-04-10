@@ -1,35 +1,31 @@
 import torch
 import mlflow
 import numpy as np
-import polars as pl
+from tqdm import tqdm
 from cp import create_cp
 from .base import BaseTrainer
 
 class ConformalTrainer(BaseTrainer):
     def __init__(self, 
-                train_loader,
-                val_loader,
-                calib_loader,
                 device, 
                 net, optimizer, criterion, scheduler, exp_name, class_dict,
                 artifact_path, cp_method, method_args, 
                 ):
         super().__init__(
-            train_loader, val_loader, device, net, optimizer,
+            device, net, optimizer,
             criterion, scheduler, exp_name, artifact_path
             )
         
-        self.calib_loader = calib_loader
         self.class_dict = class_dict
-        self.n_classes = len(self.class_dict)
+        self.n_classes = len(set(self.class_dict.values()))
         self.cp_method = cp_method
         self.method_args = method_args
-    
+
     def test(self, calib_loader, test_loader, alpha, r):
         self.net.eval()
         
         # calibration step
-        cp = create_cp(self.cp_method, self.method_args, self.device, self.net, alpha, self.n_classes, calib_loader)
+        cp = create_cp(self.cp_method, self.method_args, self.device, self.net, alpha, self.n_classes)
 
         # run test
         running_loss = 0
@@ -58,12 +54,17 @@ class ConformalTrainer(BaseTrainer):
         }
 
         # initialize qhat
-        cp.calculate_qhat()
+        cp.calculate_qhat(calib_loader)
 
-        for batch_idx, (inputs, targets) in enumerate(test_loader):
+        for batch_idx, (inputs, targets) in tqdm(enumerate(test_loader),
+                                                 total=len(test_loader),
+                                                 desc="Calculating test metrics",
+                                                 bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}'
+                                                 ):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
             with torch.no_grad():
+
                 outputs = self.net(inputs)
 
                 # calculate ovr acc
@@ -108,7 +109,7 @@ class ConformalTrainer(BaseTrainer):
                         cls_idx = (targets == c).nonzero().reshape(-1)
                         cls_pred_sets = pred_sets[cls_idx]
                         cls_coverages[cp_type][c] += cls_pred_sets[:, c].cpu().tolist()
-
+                    
             loss = self.criterion(outputs, targets)
 
             running_loss += loss.item()
@@ -128,7 +129,8 @@ class ConformalTrainer(BaseTrainer):
             "ovr_test_acc": correct_ovr / len_ovr, 
             **cls_acc_dict
         }
-        mlflow.log_metrics(ovr_test_acc, step=r)
+        # TODO: revamp report to log only the overall metrics. Class-based metrics are log in csv file to reduce the space in mlflow
+        # mlflow.log_metrics(ovr_test_acc, step=r)
 
 
         # log cp metrics
@@ -140,17 +142,17 @@ class ConformalTrainer(BaseTrainer):
                 f"avg_{cp_type}_coverage": sum(coverages[cp_type]) / len(coverages[cp_type]),
             }, step=r)
 
-            # log avg cls pred size and avg cls coverage for each type
-            mlflow.log_metrics({
-                f"cls_{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
-                for k, idx in self.class_dict.items()
-            }, step=r)
+            # # log avg cls pred size and avg cls coverage for each type
+            # mlflow.log_metrics({
+            #     f"cls_{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
+            #     for k, idx in self.class_dict.items()
+            # }, step=r)
 
             avg_cls_coverages = {
                 f"cls_{cp_type}_cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
                 for k, idx in self.class_dict.items()
             }
-            mlflow.log_metrics(avg_cls_coverages, step=r)
+            # mlflow.log_metrics(avg_cls_coverages, step=r)
 
             avg_abs_cls_coverage =  np.abs(1 - alpha - np.array(list(avg_cls_coverages.values()))).mean()
             mlflow.log_metric(f"avg_abs_cls_{cp_type}_coverage", avg_abs_cls_coverage, step=r)

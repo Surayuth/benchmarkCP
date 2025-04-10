@@ -2,26 +2,31 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
+from tqdm import tqdm
+
 
 class BaseCP(ABC):
-    def __init__(self, method_args, device, net, alpha, n_classes, calib_loader):
+    def __init__(self, method_args, device, net, alpha, n_classes):
         self.method_args = method_args
         self.device = device
         self.net = net
         self.alpha = alpha
         self.n_classes = n_classes
-        self.calib_loader = calib_loader
         self.qhat = None
         self.cond_qhats = None
     
-    def calculate_scores(self):
+    def calculate_scores(self, calib_loader):
         """
         Calculate nonconformity scores from calibration set
         """
         scores = []
 
         tot_targets = []
-        for batch_idx, (inputs, targets) in enumerate(self.calib_loader):
+        for batch_idx, (inputs, targets) in tqdm(enumerate(calib_loader), 
+                                                 total=len(calib_loader), 
+                                                 desc="Calculating non-conformity scores",
+                                                 bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}'
+                                                 ):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
             with torch.no_grad():
@@ -48,8 +53,8 @@ class BaseCP(ABC):
 
         return scores, cond_scores, cond_samples
     
-    def calculate_qhat(self):
-        scores, cond_scores, cond_samples = self.calculate_scores()
+    def calculate_qhat(self, calib_loader):
+        scores, cond_scores, cond_samples = self.calculate_scores(calib_loader)
 
         # marginal qhat
         n_calib = len(scores)
