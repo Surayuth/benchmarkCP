@@ -8,6 +8,8 @@ _DATASETS = {
     'imagenet1k': get_test_calib_data
 }
 
+# TODO: create base.py for dataset
+
 def get_data(dset_name, val_size, calib_size, **kwargs):
     """
     Get dataset splits for a specified dataset.
