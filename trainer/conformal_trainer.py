@@ -1,6 +1,7 @@
 import torch
 import mlflow
 import numpy as np
+import polars as pl
 from tqdm import tqdm
 from cp import create_cp
 from .base import BaseTrainer
@@ -123,38 +124,56 @@ class ConformalTrainer(BaseTrainer):
         cls_acc_dict = {
             f"test_{k}_acc":cls_acc[idx] for k, idx in self.class_dict.items()
         }
+        cls_acc_df = pl.DataFrame({
+            "metric": list(cls_acc_dict.keys()),
+            "values": list(cls_acc_dict.values())
+        })
+        cls_acc_df.write_csv(self.artifact_path / f"cls_acc_step_{r}.csv")
 
         ovr_test_acc = {
             "test_loss": test_loss,
             "ovr_test_acc": correct_ovr / len_ovr, 
-            **cls_acc_dict
         }
-        # TODO: revamp report to log only the overall metrics. Class-based metrics are log in csv file to reduce the space in mlflow
-        # mlflow.log_metrics(ovr_test_acc, step=r)
-
+        mlflow.log_metrics(ovr_test_acc, step=r)
 
         # log cp metrics
         mlflow.log_metric("alpha", alpha)
+
         for cp_type in ["marginal", "class-cond"]:
+            avg_cls_pred_size = {}
+            avg_cls_coverages = {}
+
             # log avg pred size and avg coverage for each type
             mlflow.log_metrics({
                 f"avg_{cp_type}_pred_size": sum(pred_sizes[cp_type]) / len(pred_sizes[cp_type]),
                 f"avg_{cp_type}_coverage": sum(coverages[cp_type]) / len(coverages[cp_type]),
             }, step=r)
 
-            # # log avg cls pred size and avg cls coverage for each type
-            # mlflow.log_metrics({
-            #     f"cls_{cp_type}_cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
-            #     for k, idx in self.class_dict.items()
-            # }, step=r)
+            # log avg cls pred size and avg cls coverage for each type
+            avg_cls_pred_size= {
+                f"cls_pred_size_{k}": sum(cls_pred_sizes[cp_type][idx]) / len(cls_pred_sizes[cp_type][idx])
+                for k, idx in self.class_dict.items()   
+            }
 
             avg_cls_coverages = {
-                f"cls_{cp_type}_cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
+                f"cls_coverage_{k}": sum(cls_coverages[cp_type][idx]) / len(cls_coverages[cp_type][idx])
                 for k, idx in self.class_dict.items()
             }
-            # mlflow.log_metrics(avg_cls_coverages, step=r)
+
+            avg_cls_pred_size_df = pl.DataFrame({
+                "metrics": list(avg_cls_pred_size.keys()),
+                "values": list(avg_cls_pred_size.values())
+            })
+
+            avg_cls_coverage_df = pl.DataFrame({
+                "metrics": list(avg_cls_coverages.keys()),
+                "values": list(avg_cls_coverages.values())
+            })
+
+            avg_cls_pred_size_df.write_csv(self.artifact_path / f"avg_cls_{cp_type}_pred_size_step_{r}.csv")
+            avg_cls_coverage_df.write_csv(self.artifact_path / f"avg_cls_{cp_type}_pred_size_step_{r}.csv")
 
             avg_abs_cls_coverage =  np.abs(1 - alpha - np.array(list(avg_cls_coverages.values()))).mean()
             mlflow.log_metric(f"avg_abs_cls_{cp_type}_coverage", avg_abs_cls_coverage, step=r)
-
+        
         return test_loss
