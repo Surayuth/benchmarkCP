@@ -1,6 +1,5 @@
 # paper: https://arxiv.org/pdf/2009.14193
 import torch
-import numpy as np
 import torch.nn.functional as F
 from cp import BaseCP
 

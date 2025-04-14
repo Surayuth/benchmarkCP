@@ -1,11 +1,13 @@
 from .cifar10_resnet import load_cifar10_resnet
 from .imagenet1k_resnet import load_imagenet1k_resnet
+from .simple_reg_net import load_simple_reg_net
 
 # TODO: add model args like in cp methods
 
 _MODELS = {
     "cifar10_resnet": load_cifar10_resnet,
-    "imagenet1k_resnet": load_imagenet1k_resnet
+    "imagenet1k_resnet": load_imagenet1k_resnet,
+    'simple_reg_net': load_simple_reg_net
 }
 
 def load_model(model_name, version):

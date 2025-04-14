@@ -70,9 +70,9 @@ class BaseCP(ABC):
         self.cond_qhats = cond_qhats
 
     @abstractmethod
-    def calculate_pred_set(self, outputs, normalized=False):
+    def calculate_pred_set(self, outputs):
         pass
     
     @abstractmethod
-    def score_func(self, probs, targets, **kwargs):
+    def score_func(self, outputs, targets, **kwargs):
         pass

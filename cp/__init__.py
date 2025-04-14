@@ -2,6 +2,7 @@ from .base import BaseCP
 from .methods.hinge import HingeCP
 from .methods.aps import APSCP
 from .methods.raps import RAPSCP
+from .methods.reg_cp import RegCP
 
 # TODO: implement auto method discovery
 
@@ -21,6 +22,10 @@ _METHODS = {
             {'name': 'lamb', 'type': float, 'default': 0.0, 'help': 'Lambda regularization parameter'},
             {'name': 'kreg', 'type': int, 'default': 3, 'help': 'K regularization parameter'}
         ]
+    },
+    'reg_cp': {
+        'class': RegCP,
+        'params': []
     }
     # Add more methods as you implement them
 }

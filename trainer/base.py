@@ -28,7 +28,6 @@ class BaseTrainer:
 
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-
             self.optimizer.zero_grad()
 
             outputs = self.net(inputs)

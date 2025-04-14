@@ -65,7 +65,6 @@ class ConformalClassTrainer(BaseTrainer):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
             with torch.no_grad():
-
                 outputs = self.net(inputs)
 
                 # calculate ovr acc
