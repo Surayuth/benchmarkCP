@@ -9,10 +9,12 @@ class APSCP(BaseCP):
     def __init__(self, method_args, device, net, alpha, n_classes):
         super().__init__(method_args, device, net, alpha, n_classes)
     
-    def score_func(self, probs, targets):
+    def score_func(self, outputs, targets):
         """
         Calculate batch nonconformity scores.
         """
+        probs = F.softmax(outputs, dim=1)
+
         N = probs.shape[0]
 
         # sort prob and target 
@@ -34,15 +36,12 @@ class APSCP(BaseCP):
 
         return batch_scores
 
-    def calculate_pred_set(self, outputs, normalized=False):
+    def calculate_pred_set(self, outputs):
         """
         Calculate pred set for marginal and class-cond types.
         Output: pred_sets (marginal pred sets, cls-cond pred sets)
         """
-        if normalized:
-            probs = outputs
-        else:
-            probs = F.softmax(outputs, dim=1)
+        probs = F.softmax(outputs, dim=1)
 
         N, C = probs.shape
 

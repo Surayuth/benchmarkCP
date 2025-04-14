@@ -5,9 +5,10 @@ from torch import optim
 from pathlib import Path
 from torch.utils.data import DataLoader
 from datasets import get_data
-from trainer import ConformalTrainer
+from trainer import get_cp_trainer
 from models import load_model
 from cp.utils.cli import create_parser, get_method_params
+from loss_fn import get_loss_fn
 
 def create_experiment(exp_name):
     exp = mlflow.get_experiment_by_name(exp_name)
@@ -37,6 +38,8 @@ if __name__ == "__main__":
     cp_method = args.cp_method
     repeats = args.repeats
     test_only = args.test_only
+    task = args.task
+    loss_fn = args.loss_fn
 
     # Assign method-specific vars
     method_args = get_method_params(args, cp_method)
@@ -63,7 +66,8 @@ if __name__ == "__main__":
             net = load_model(model_name, model_version)
 
             # Init loss function
-            criterion = nn.CrossEntropyLoss()
+            # TODO: write yaml instead of cli as the params grow
+            criterion = get_loss_fn(loss_fn)
 
             # Init optimizer 
             optimizer = optim.SGD(net.parameters(), lr=0.01,
@@ -75,10 +79,10 @@ if __name__ == "__main__":
             )
 
             # Init trainer
-            trainer = ConformalTrainer(
+            trainer = get_cp_trainer(task)(
                 device, net, optimizer, criterion, scheduler, exp_name, class_dict,
                 artifact_path, cp_method, method_args,
-                )
+            )
 
             if not test_only:
                 # Train 

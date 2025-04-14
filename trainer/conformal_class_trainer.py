@@ -6,7 +6,7 @@ from tqdm import tqdm
 from cp import create_cp
 from .base import BaseTrainer
 
-class ConformalTrainer(BaseTrainer):
+class ConformalClassTrainer(BaseTrainer):
     def __init__(self, 
                 device, 
                 net, optimizer, criterion, scheduler, exp_name, class_dict,

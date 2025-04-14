@@ -34,6 +34,8 @@ def create_parser():
     common_group.add_argument("--dset_name", type=str, default="cifar10")
     common_group.add_argument("--repeats", type=int, default=1, help="repeats are equivalent to steps in mlflow logs.")
     common_group.add_argument("--test_only", action="store_true", help="test only flag")
+    common_group.add_argument("--task", type=str, default="class", help="classification (class) or regression (reg)")
+    common_group.add_argument("--loss_fn", type=str, default="ce", help="loss function")
 
     # available cp methods
     common_group.add_argument('--cp_method', type=str, required=True, 

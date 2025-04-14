@@ -8,15 +8,13 @@ class HingeCP(BaseCP):
     def __init__(self, method_args, device, net, alpha, n_classes):
         super().__init__(method_args, device, net, alpha, n_classes)
 
-    def score_func(self, probs, targets):
+    def score_func(self, outputs, targets):
+        probs = F.softmax(outputs, dim=1)
         target_probs = probs[torch.arange(len(probs)), targets]
         return 1 - target_probs
 
-    def calculate_pred_set(self, outputs, normalized=False):
-        if normalized:
-            probs = outputs
-        else:
-            probs = F.softmax(outputs, dim=1)
+    def calculate_pred_set(self, outputs):
+        probs = F.softmax(outputs, dim=1)
 
         pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
         cond_pred_sets = torch.zeros(probs.shape, dtype=torch.bool, device=self.device)
