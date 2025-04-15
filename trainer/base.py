@@ -91,3 +91,5 @@ class BaseTrainer:
                 torch.save(self.net.state_dict(), cur_model_path)
 
             self.scheduler.step(val_loss)
+
+    # TODO: add train specific function for this method

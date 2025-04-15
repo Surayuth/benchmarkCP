@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from datasets import get_data
 from trainer import get_cp_trainer
 from models import load_model
-from cp.utils.cli import create_parser, get_method_params
+from cp.utils.cli import create_parser, get_method_params, get_loss_params
 from loss_fn import get_loss_fn
 
 def create_experiment(exp_name):
@@ -44,6 +44,9 @@ if __name__ == "__main__":
     # Assign method-specific vars
     method_args = get_method_params(args, cp_method)
 
+    # Assign loss-specific vars
+    loss_args = get_loss_params(args, loss_fn)
+
     exp_id = create_experiment(exp_name)
 
     with mlflow.start_run(experiment_id=exp_id) as run:
@@ -67,7 +70,7 @@ if __name__ == "__main__":
 
             # Init loss function
             # TODO: write yaml instead of cli as the params grow
-            criterion = get_loss_fn(loss_fn)
+            criterion = get_loss_fn(loss_fn, loss_args)
 
             # Init optimizer 
             optimizer = optim.SGD(net.parameters(), lr=0.01,

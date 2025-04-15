@@ -1,5 +1,6 @@
 import argparse
 from cp import _METHODS
+from loss_fn import _LOSSFN
 
 
 def get_method_params(args, method_name):
@@ -14,6 +15,19 @@ def get_method_params(args, method_name):
             method_params[param_name] = getattr(args, param_name)
     
     return method_params
+
+def get_loss_params(args, loss_name):
+    """Extract loss-specific parameters from args based on the registry."""
+    loss_params = {}
+    
+    # Only extract parameters defined for this method
+    if loss_name in _LOSSFN:
+        for param in _LOSSFN[loss_name]['params']:
+            param_name = param['name']
+            # Get the value from args
+            loss_params[param_name] = getattr(args, param_name)
+    
+    return loss_params
 
 
 def create_parser():
@@ -49,6 +63,19 @@ def create_parser():
     # Add method-specific arguments to their respective groups
     for method, info in _METHODS.items():
         group = method_groups[method]
+        for param in info['params']:
+            group.add_argument(f'--{param["name"]}', type=param['type'], 
+                             default=param['default'], 
+                             help=param["help"])
+            
+    # Create argument groups for each loss fn
+    loss_groups = {}
+    for loss_name in _LOSSFN.keys():
+        loss_groups[loss_name] = parser.add_argument_group(f'{loss_name} Method Options')
+
+    # Add loss-specific arguments to their respective groups
+    for loss_name, info in _LOSSFN.items():
+        group = loss_groups[loss_name]
         for param in info['params']:
             group.add_argument(f'--{param["name"]}', type=param['type'], 
                              default=param['default'], 

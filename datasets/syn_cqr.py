@@ -17,7 +17,7 @@ def gen_xy(n, seed=42):
 
     u = torch.rand(n, generator=g)
     e2 = torch.randn(n, generator=g)
-    y += (u < 0.01) * e2
+    y += 25 * (u < 0.01) * e2
 
     return x, y
 

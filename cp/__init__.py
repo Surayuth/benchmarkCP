@@ -3,6 +3,7 @@ from .methods.hinge import HingeCP
 from .methods.aps import APSCP
 from .methods.raps import RAPSCP
 from .methods.reg_cp import RegCP
+from .methods.cqr import CQR
 
 # TODO: implement auto method discovery
 
@@ -26,7 +27,11 @@ _METHODS = {
     'reg_cp': {
         'class': RegCP,
         'params': []
-    }
+    },
+    'cqr': {
+        'class': CQR,
+        'params': []
+    },
     # Add more methods as you implement them
 }
 
